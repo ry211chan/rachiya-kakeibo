@@ -46,7 +46,7 @@ export default function App() {
   // ▼ データロード完了フラグを追加 ▼
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
-  // ▼ アプリ起動時にデータを読み込む処理を追加 ▼
+  // ▼ データロード ▼
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -68,9 +68,9 @@ export default function App() {
     loadData();
   }, []);
 
-  // ▼ データが変更されるたびに自動保存する処理を追加 ▼
+  // ▼ データ保存 ▼
   useEffect(() => {
-    if (!isDataLoaded) return; // 読み込みが完了するまでは上書き保存しないようにガード
+    if (!isDataLoaded) return;
     const saveData = async () => {
       try {
         await AsyncStorage.setItem('wallets', JSON.stringify(wallets));
@@ -91,16 +91,13 @@ export default function App() {
   const draggingIndexRef = useRef(null);
   draggingIndexRef.current = draggingIndex;
 
-  // 各カードの高さを一定としてインデックス計算 (CardHeight = 62 + margin 12 = 74)
   const ITEM_HEIGHT = 74;
 
   // URLスキーム（Deep Link）受取処理
   useEffect(() => {
-    // URLのパラメータを取り出す処理
     const handleUrl = (url) => {
       if (!url) return;
 
-      // 例: rachiya://add-expense?amount=1000&memo=%E3%83%A9%E3%83%B3%E3%83%81
       const queryString = url.split('?')[1];
       if (!queryString) return;
 
@@ -129,12 +126,10 @@ export default function App() {
       }
     };
 
-    // アプリ起動時のURL取得
     Linking.getInitialURL().then(url => {
       if (url) handleUrl(url);
     });
 
-    // バックグラウンドからの復帰時などのイベント監視
     const subscription = Linking.addEventListener('url', (event) => {
       handleUrl(event.url);
     });
@@ -192,6 +187,12 @@ export default function App() {
   const [expenseWalletId, setExpenseWalletId] = useState('');
   const [expenseCategoryId, setExpenseCategoryId] = useState('');
 
+  // 収入入力用ステート
+  const [incomeModalVisible, setIncomeModalVisible] = useState(false);
+  const [incomeAmount, setIncomeAmount] = useState('');
+  const [incomeMemo, setIncomeMemo] = useState('');
+  const [incomeWalletId, setIncomeWalletId] = useState('');
+
   // 履歴詳細・編集用ステート
   const [editingHistoryItem, setEditingHistoryItem] = useState(null);
   const [editHistoryMemo, setEditHistoryMemo] = useState('');
@@ -237,7 +238,6 @@ export default function App() {
     const selectedCategory = categories.find(c => c.id === sortTargetCategoryId);
     const categoryName = selectedCategory ? selectedCategory.name : selectedUnsortedItem.memo;
 
-    // お財布の残高と履歴を更新（支出として記録）
     setWallets(wallets.map(w => w.id === sortTargetWalletId ? {
       ...w,
       balance: w.balance - selectedUnsortedItem.amount,
@@ -250,10 +250,8 @@ export default function App() {
       }]
     } : w));
 
-    // 未仕分け支出リストから削除
     setUnsortedExpenses(unsortedExpenses.filter(u => u.id !== selectedUnsortedItem.id));
 
-    // ステート初期化
     setSelectedUnsortedItem(null);
     setSortTargetWalletId('');
     setSortTargetCategoryId('');
@@ -276,7 +274,7 @@ export default function App() {
     setWallets(wallets.filter(w => w.id !== walletId));
   };
 
-  // ▼ お財布リネーム実行 ▼
+  // お財布リネーム実行
   const saveWalletRename = (id) => {
     if (!editWalletName.trim()) return Alert.alert("エラー", "名前を入力してください");
     setWallets(wallets.map(w => w.id === id ? { ...w, name: editWalletName } : w));
@@ -322,6 +320,26 @@ export default function App() {
     Alert.alert("完了", "支出を記録しました");
   };
 
+  // 収入追加実行
+  const executeIncome = () => {
+    const amount = parseNumber(incomeAmount);
+    if (!amount || !incomeWalletId) return Alert.alert("エラー", "金額とお財布を選択してください");
+
+    const memoText = incomeMemo.trim() || '収入';
+
+    setWallets(wallets.map(w => w.id === incomeWalletId ? {
+      ...w,
+      balance: w.balance + amount,
+      history: [...w.history, { id: Date.now().toString(), month: selectedMonth, memo: '収入', detailMemo: memoText, amount: amount }]
+    } : w));
+
+    setIncomeAmount('');
+    setIncomeMemo('');
+    setIncomeWalletId('');
+    setIncomeModalVisible(false);
+    Alert.alert("完了", "収入を記録しました");
+  };
+
   // 履歴の編集保存（お財布・カテゴリ変更対応）
   const saveHistoryEdit = () => {
     if (!editingHistoryItem) return;
@@ -331,15 +349,12 @@ export default function App() {
     const sign = editingHistoryItem.amount < 0 ? -1 : 1;
     const updatedAmount = newAmount * sign;
 
-    // カテゴリ表示名の更新（選択されたカテゴリ名、選択がない場合は元のmemo）
     const selectedCat = categories.find(c => c.id === editHistoryCategoryId);
     const updatedCategoryName = selectedCat ? selectedCat.name : editingHistoryItem.memo;
 
     setWallets(prevWallets => {
-      // 1. 移動元と移動先のお財布から履歴を一旦除外＆残高調整
       let newWallets = prevWallets.map(w => {
         if (w.id === selectedWalletId) {
-          // 移動元のお財布：旧履歴分の残高を元に戻し、履歴から削除
           return {
             ...w,
             balance: w.balance - editingHistoryItem.amount,
@@ -349,7 +364,6 @@ export default function App() {
         return w;
       });
 
-      // 2. 移動先（または同じお財布）へ更新後の履歴を追加＆残高反映
       newWallets = newWallets.map(w => {
         if (w.id === editHistoryWalletId) {
           const updatedHistoryItem = {
@@ -435,7 +449,7 @@ export default function App() {
     return total;
   };
 
-  // 年間レポート用データ構築（カテゴリごとの合計 ＋ 月毎の内訳）
+  // 年間レポート用データ構築
   const getAnnualReportDetailed = () => {
     const report = {};
     wallets.forEach(w => w.history.forEach(h => {
@@ -454,7 +468,6 @@ export default function App() {
     return report;
   };
 
-  // 数値カンマ区切り補助関数
   const formatNum = (num) => (num || 0).toLocaleString();
 
   return (
@@ -485,12 +498,10 @@ export default function App() {
             <ScrollView contentContainerStyle={styles.innerScroll}>
               <TouchableOpacity onPress={() => setSelectedWalletId(null)}><Text style={styles.back}>← お財布一覧へ</Text></TouchableOpacity>
               
-              {/* ▼ 履歴画面の改修：残高計算と上部表示、各履歴への残高表示 ▼ */}
               {(() => {
                 const wallet = wallets.find(w => w.id === selectedWalletId);
                 if (!wallet) return null;
 
-                // 過去の履歴から順に足して、その時点での残高を計算する
                 let runningBalance = 0;
                 const historyWithBalance = wallet.history.map(h => {
                   runningBalance += h.amount;
@@ -515,7 +526,6 @@ export default function App() {
                           </View>
                           <View style={{ alignItems: 'flex-end' }}>
                             <Text style={[styles.bold, { color: h.amount < 0 ? '#e53e3e' : '#2b6cb0' }]}>{formatNum(h.amount)}円</Text>
-                            {/* ここでカッコ書きの残高を表示 */}
                             <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>({formatNum(h.currentBalance)}円)</Text>
                             
                             <TouchableOpacity 
@@ -548,9 +558,14 @@ export default function App() {
                 <>
                   <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
                     <Text style={styles.title}>ホーム</Text>
-                    <TouchableOpacity style={styles.expenseBtn} onPress={() => setExpenseModalVisible(true)}>
-                      <Text style={styles.expenseBtnText}>＋ 支出を入力</Text>
-                    </TouchableOpacity>
+                    <View style={{flexDirection: 'row', gap: 6}}>
+                      <TouchableOpacity style={[styles.expenseBtn, { backgroundColor: '#2b6cb0' }]} onPress={() => setIncomeModalVisible(true)}>
+                        <Text style={styles.expenseBtnText}>＋ 収入を入力</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.expenseBtn} onPress={() => setExpenseModalVisible(true)}>
+                        <Text style={styles.expenseBtnText}>＋ 支出を入力</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
                   {/* 今月の総支出 */}
@@ -571,7 +586,7 @@ export default function App() {
                         style={[styles.input, { flex: 1 }]}
                       />
                       <TextInput
-                        placeholder="メモ (例: コンコンビニ)"
+                        placeholder="メモ (例: コンビニ)"
                         value={quickMemo}
                         onChangeText={setQuickMemo}
                         style={[styles.input, { flex: 1.5 }]}
@@ -626,12 +641,17 @@ export default function App() {
                     <View style={styles.inputRow}>
                       <TextInput 
                         keyboardType="numeric" 
-                        placeholder="追加する資金を入力" 
+                        placeholder="金額を入力" 
                         value={inputSalary} 
                         onChangeText={(text) => setInputSalary(formatInputNumber(text))} 
                         style={styles.input} 
                       />
-                      <TouchableOpacity style={styles.btn} onPress={() => { setMonthlyIncomes({...monthlyIncomes, [selectedMonth]: (monthlyIncomes[selectedMonth] || 0) + parseNumber(inputSalary)}); setInputSalary(''); }}><Text style={styles.btnText}>追加</Text></TouchableOpacity>
+                      <TouchableOpacity style={styles.btn} onPress={() => { setMonthlyIncomes({...monthlyIncomes, [selectedMonth]: (monthlyIncomes[selectedMonth] || 0) + parseNumber(inputSalary)}); setInputSalary(''); }}>
+                        <Text style={styles.btnText}>追加</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.btn, { backgroundColor: '#64748b' }]} onPress={() => { setMonthlyIncomes({...monthlyIncomes, [selectedMonth]: parseNumber(inputSalary)}); setInputSalary(''); }}>
+                        <Text style={styles.btnText}>変更</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
 
@@ -818,7 +838,6 @@ export default function App() {
                             <Text style={[styles.bold, {color: '#e53e3e', fontSize: 18}]}>計 {formatNum(data.total)}円</Text>
                           </View>
                           
-                          {/* 月ごとの内訳を表示 */}
                           <View style={{borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 8}}>
                             {Object.keys(data.monthly).sort((a,b) => parseInt(a) - parseInt(b)).map(m => (
                               <View key={m} style={{flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2}}>
@@ -836,6 +855,42 @@ export default function App() {
             </ScrollView>
           )}
         </View>
+
+        {/* 収入入力モーダル */}
+        <Modal visible={incomeModalVisible} animationType="slide" transparent={true}>
+          <View style={styles.modalOverlay}>
+            <ScrollView contentContainerStyle={styles.modalContent}>
+              <Text style={styles.title}>💰 収入の入力</Text>
+              
+              <Text style={styles.label}>金額</Text>
+              <TextInput 
+                keyboardType="numeric" 
+                placeholder="例: 5,000" 
+                value={incomeAmount} 
+                onChangeText={(text) => setIncomeAmount(formatInputNumber(text))} 
+                style={styles.inputFull} 
+              />
+
+              <Text style={styles.label}>メモ（任意）</Text>
+              <TextInput placeholder="例: 臨時収入、給料" value={incomeMemo} onChangeText={setIncomeMemo} style={styles.inputFull} />
+
+              <Text style={styles.label}>どのお財布に入れる？</Text>
+              {wallets.map(w => (
+                <TouchableOpacity key={w.id} style={[styles.card, incomeWalletId === w.id && {borderColor: '#2b6cb0', borderWidth: 2}]} onPress={() => setIncomeWalletId(w.id)}>
+                  <Text>{w.name} (残高: {formatNum(w.balance)}円)</Text>
+                </TouchableOpacity>
+              ))}
+
+              <TouchableOpacity style={[styles.btnFull, {backgroundColor: '#2b6cb0'}]} onPress={executeIncome}>
+                <Text style={styles.btnText}>収入を記録する</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={{marginTop: 15, alignItems: 'center'}} onPress={() => setIncomeModalVisible(false)}>
+                <Text style={{color: '#666'}}>キャンセル</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </Modal>
 
         {/* 支出入力モーダル */}
         <Modal visible={expenseModalVisible} animationType="slide" transparent={true}>
@@ -1010,7 +1065,7 @@ export default function App() {
           </View>
         </Modal>
 
-        {/* タブバー（お財布・カテゴリ設定をギアアイコン⚙️に統合） */}
+        {/* タブバー */}
         <View style={styles.tabBar}>
           {[ {id: 'home', l: '🏠'}, {id: 'sortFunds', l: '💸'}, {id: 'report', l: '📊'}, {id: 'settings', l: '⚙️'} ].map(t => (
             <TouchableOpacity key={t.id} onPress={() => { setSelectedWalletId(null); setCurrentTab(t.id); }} style={styles.tab}>
