@@ -3,6 +3,7 @@
     "name": "らーちや家計簿",
     "slug": "rachiya-kakeibo",
     "version": "1.0.0",
+    "owner": "rachannnnn",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -21,6 +22,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f99f2fd3-3740-465d-8a74-180119e564c0"
+      }
     }
   }
 }
