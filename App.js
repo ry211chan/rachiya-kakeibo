@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, SafeAreaView, StatusBar, Modal, PanResponder, Animated, Linking } from 'react-native';
+// ▼ データの保存・読み込み用ライブラリを追加 ▼
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home'); 
@@ -37,6 +39,47 @@ export default function App() {
   const [selectedIcon, setSelectedIcon] = useState('🏷️'); // 自由入力用
   const [editingCatId, setEditingCatId] = useState(null);
   const [editCatName, setEditCatName] = useState('');
+
+  // ▼ データロード完了フラグを追加 ▼
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // ▼ アプリ起動時にデータを読み込む処理を追加 ▼
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const storedWallets = await AsyncStorage.getItem('wallets');
+        const storedCategories = await AsyncStorage.getItem('categories');
+        const storedMonthlyIncomes = await AsyncStorage.getItem('monthlyIncomes');
+        const storedUnsortedExpenses = await AsyncStorage.getItem('unsortedExpenses');
+
+        if (storedWallets) setWallets(JSON.parse(storedWallets));
+        if (storedCategories) setCategories(JSON.parse(storedCategories));
+        if (storedMonthlyIncomes) setMonthlyIncomes(JSON.parse(storedMonthlyIncomes));
+        if (storedUnsortedExpenses) setUnsortedExpenses(JSON.parse(storedUnsortedExpenses));
+      } catch (e) {
+        console.error("Failed to load data", e);
+      } finally {
+        setIsDataLoaded(true);
+      }
+    };
+    loadData();
+  }, []);
+
+  // ▼ データが変更されるたびに自動保存する処理を追加 ▼
+  useEffect(() => {
+    if (!isDataLoaded) return; // 読み込みが完了するまでは上書き保存しないようにガード
+    const saveData = async () => {
+      try {
+        await AsyncStorage.setItem('wallets', JSON.stringify(wallets));
+        await AsyncStorage.setItem('categories', JSON.stringify(categories));
+        await AsyncStorage.setItem('monthlyIncomes', JSON.stringify(monthlyIncomes));
+        await AsyncStorage.setItem('unsortedExpenses', JSON.stringify(unsortedExpenses));
+      } catch (e) {
+        console.error("Failed to save data", e);
+      }
+    };
+    saveData();
+  }, [wallets, categories, monthlyIncomes, unsortedExpenses, isDataLoaded]);
 
   // ドラッグ＆ドロップ並び替え用ステート
   const [draggingType, setDraggingType] = useState(null); // 'wallet' | 'category' | null
@@ -430,33 +473,60 @@ export default function App() {
           {selectedWalletId ? (
             <ScrollView contentContainerStyle={styles.innerScroll}>
               <TouchableOpacity onPress={() => setSelectedWalletId(null)}><Text style={styles.back}>← お財布一覧へ</Text></TouchableOpacity>
-              <Text style={styles.title}>{wallets.find(w => w.id === selectedWalletId)?.name} 履歴</Text>
-              {wallets.find(w => w.id === selectedWalletId)?.history.map(h => (
-                <View key={h.id} style={styles.cardCol}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View>
-                      <Text style={styles.bold}>{h.memo}</Text>
-                      {h.detailMemo ? <Text style={{ color: '#64748b', fontSize: 13, marginTop: 2 }}>📝 {h.detailMemo}</Text> : null}
+              
+              {/* ▼ 履歴画面の改修：残高計算と上部表示、各履歴への残高表示 ▼ */}
+              {(() => {
+                const wallet = wallets.find(w => w.id === selectedWalletId);
+                if (!wallet) return null;
+
+                // 過去の履歴から順に足して、その時点での残高を計算する
+                let runningBalance = 0;
+                const historyWithBalance = wallet.history.map(h => {
+                  runningBalance += h.amount;
+                  return { ...h, currentBalance: runningBalance };
+                });
+
+                return (
+                  <>
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={styles.title}>{wallet.name} 履歴</Text>
+                      <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#333', marginTop: 4 }}>
+                        現在の最終残金: {formatNum(wallet.balance)}円
+                      </Text>
                     </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={[styles.bold, { color: h.amount < 0 ? '#e53e3e' : '#2b6cb0' }]}>{formatNum(h.amount)}円</Text>
-                      <TouchableOpacity 
-                        onPress={() => {
-                          setEditingHistoryItem(h);
-                          setEditHistoryMemo(h.detailMemo || '');
-                          setEditHistoryAmount(formatInputNumber(Math.abs(h.amount).toString()));
-                          setEditHistoryWalletId(selectedWalletId);
-                          const currentCat = categories.find(c => c.name === h.memo);
-                          setEditHistoryCategoryId(currentCat ? currentCat.id : '');
-                        }}
-                        style={{ marginTop: 4 }}
-                      >
-                        <Text style={{ color: '#5cacee', fontSize: 12 }}>編集</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-              ))}
+                    
+                    {historyWithBalance.map(h => (
+                      <View key={h.id} style={styles.cardCol}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <View>
+                            <Text style={styles.bold}>{h.memo}</Text>
+                            {h.detailMemo ? <Text style={{ color: '#64748b', fontSize: 13, marginTop: 2 }}>📝 {h.detailMemo}</Text> : null}
+                          </View>
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={[styles.bold, { color: h.amount < 0 ? '#e53e3e' : '#2b6cb0' }]}>{formatNum(h.amount)}円</Text>
+                            {/* ここでカッコ書きの残高を表示 */}
+                            <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>({formatNum(h.currentBalance)}円)</Text>
+                            
+                            <TouchableOpacity 
+                              onPress={() => {
+                                setEditingHistoryItem(h);
+                                setEditHistoryMemo(h.detailMemo || '');
+                                setEditHistoryAmount(formatInputNumber(Math.abs(h.amount).toString()));
+                                setEditHistoryWalletId(selectedWalletId);
+                                const currentCat = categories.find(c => c.name === h.memo);
+                                setEditHistoryCategoryId(currentCat ? currentCat.id : '');
+                              }}
+                              style={{ marginTop: 4 }}
+                            >
+                              <Text style={{ color: '#5cacee', fontSize: 12 }}>編集</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                );
+              })()}
             </ScrollView>
           ) : (
             <ScrollView 
