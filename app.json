@@ -6,11 +6,17 @@
     "owner": "rachannnnn",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
       "supportsTablet": true
     },
     "android": {
-      "package": "com.rachiya.kakeibo"
+      "package": "com.rachiya.kakeibo",
+      "splash": {
+        "backgroundColor": "#ffffff"
+      }
     },
     "extra": {
       "eas": {
