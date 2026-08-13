@@ -29,6 +29,9 @@ export default function App() {
     { id: '2', name: '自由費袋', balance: 0, history: [] },
   ]);
   const [newWalletName, setNewWalletName] = useState('');
+  // ▼ お財布編集用ステートを追加 ▼
+  const [editingWalletId, setEditingWalletId] = useState(null);
+  const [editWalletName, setEditWalletName] = useState('');
 
   // カテゴリデータ
   const [categories, setCategories] = useState([
@@ -271,6 +274,14 @@ export default function App() {
       return Alert.alert("削除不可", "このお財布は使用履歴があるため削除できません。");
     }
     setWallets(wallets.filter(w => w.id !== walletId));
+  };
+
+  // ▼ お財布リネーム実行 ▼
+  const saveWalletRename = (id) => {
+    if (!editWalletName.trim()) return Alert.alert("エラー", "名前を入力してください");
+    setWallets(wallets.map(w => w.id === id ? { ...w, name: editWalletName } : w));
+    setEditingWalletId(null);
+    setEditWalletName('');
   };
 
   // 仕分け実行
@@ -681,22 +692,35 @@ export default function App() {
                           }
                         ]}
                       >
-                        <TouchableOpacity 
-                          activeOpacity={0.8}
-                          onLongPress={() => {
-                            setDraggingType('wallet');
-                            setDraggingIndex(index);
-                          }}
-                          style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
-                        >
-                          <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-                            <Text style={{color: '#94a3b8', fontSize: 16}}>☰</Text>
-                            <Text style={styles.bold}>{w.name}</Text>
+                        {editingWalletId === w.id ? (
+                          <View style={{flexDirection: 'row', flex: 1, gap: 8, alignItems: 'center'}}>
+                            <TextInput value={editWalletName} onChangeText={setEditWalletName} style={[styles.input, {paddingVertical: 4}]} />
+                            <TouchableOpacity style={[styles.btn, {paddingHorizontal: 10}]} onPress={() => saveWalletRename(w.id)}><Text style={styles.btnText}>保存</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={() => setEditingWalletId(null)}><Text style={{color: '#666'}}>取消</Text></TouchableOpacity>
                           </View>
-                          <TouchableOpacity onPress={() => deleteWallet(w.id)}>
-                            <Text style={{color:'red'}}>削除</Text>
+                        ) : (
+                          <TouchableOpacity 
+                            activeOpacity={0.8}
+                            onLongPress={() => {
+                              setDraggingType('wallet');
+                              setDraggingIndex(index);
+                            }}
+                            style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                          >
+                            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                              <Text style={{color: '#94a3b8', fontSize: 16}}>☰</Text>
+                              <Text style={styles.bold}>{w.name}</Text>
+                            </View>
+                            <View style={{flexDirection: 'row', gap: 12}}>
+                              <TouchableOpacity onPress={() => { setEditingWalletId(w.id); setEditWalletName(w.name); }}>
+                                <Text style={{color: '#5cacee'}}>編集</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity onPress={() => deleteWallet(w.id)}>
+                                <Text style={{color:'red'}}>削除</Text>
+                              </TouchableOpacity>
+                            </View>
                           </TouchableOpacity>
-                        </TouchableOpacity>
+                        )}
                       </Animated.View>
                     );
                   })}
