@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "らーちや家計簿",
+    "slug": "rachiya-kakeibo",
+    "scheme": "rachiya",
+    "version": "1.0.0",
+    "android": {
+      "package": "com.rachiya.kakeibo"
+    }
+  }
+}
