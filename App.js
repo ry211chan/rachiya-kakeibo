@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, SafeAreaView, StatusBar, Modal, PanResponder, Animated, Linking } from 'react-native';
-// ▼ データの保存・読み込み用ライブラリを追加 ▼
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function App() {
@@ -29,7 +28,6 @@ export default function App() {
     { id: '2', name: '自由費袋', balance: 0, history: [] },
   ]);
   const [newWalletName, setNewWalletName] = useState('');
-  // ▼ お財布編集用ステートを追加 ▼
   const [editingWalletId, setEditingWalletId] = useState(null);
   const [editWalletName, setEditWalletName] = useState('');
 
@@ -39,14 +37,14 @@ export default function App() {
     { id: '2', name: '日用品', icon: '🧻' }
   ]);
   const [newCatName, setNewCatName] = useState('');
-  const [selectedIcon, setSelectedIcon] = useState('🏷️'); // 自由入力用
+  const [selectedIcon, setSelectedIcon] = useState('🏷️');
   const [editingCatId, setEditingCatId] = useState(null);
   const [editCatName, setEditCatName] = useState('');
 
-  // ▼ データロード完了フラグを追加 ▼
+  // データロード完了フラグ
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
-  // ▼ データロード ▼
+  // データロード
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -68,7 +66,7 @@ export default function App() {
     loadData();
   }, []);
 
-  // ▼ データ保存 ▼
+  // データ保存
   useEffect(() => {
     if (!isDataLoaded) return;
     const saveData = async () => {
@@ -85,7 +83,7 @@ export default function App() {
   }, [wallets, categories, monthlyIncomes, unsortedExpenses, isDataLoaded]);
 
   // ドラッグ＆ドロップ並び替え用ステート
-  const [draggingType, setDraggingType] = useState(null); // 'wallet' | 'category' | null
+  const [draggingType, setDraggingType] = useState(null);
   const [draggingIndex, setDraggingIndex] = useState(null);
   const pan = useRef(new Animated.ValueXY()).current;
   const draggingIndexRef = useRef(null);
@@ -93,16 +91,21 @@ export default function App() {
 
   const ITEM_HEIGHT = 74;
 
-  // URLスキーム（Deep Link）受取処理（※データロード完了待機 & 二重追加防止を追加修正）
-  const processedUrlRef = useRef(null);
+  // ▼ URLスキーム受取処理（3秒以内の連打重複のみを防御する方式へ変更） ▼
+  const lastProcessedRef = useRef({ url: '', time: 0 });
 
   useEffect(() => {
-    // AsyncStorageからのデータの読み込みが完了するまで処理を待機（コールドスタート時の上書き消去を防ぐ）
     if (!isDataLoaded) return;
 
     const handleUrl = (url) => {
-      if (!url || processedUrlRef.current === url) return;
-      processedUrlRef.current = url;
+      if (!url) return;
+
+      const now = Date.now();
+      // 3秒以内に全く同一のURLが受信された場合のみ「アプリ起動時等の二重発火」としてブロック
+      if (lastProcessedRef.current.url === url && (now - lastProcessedRef.current.time) < 3000) {
+        return;
+      }
+      lastProcessedRef.current = { url, time: now };
 
       const queryString = url.split('?')[1];
       if (!queryString) return;
@@ -118,12 +121,16 @@ export default function App() {
       const amount = parseNumber(params.amount || params.price || '0');
       const memo = params.memo || params.title || 'URLスキーム追加';
 
+      // 決済発生時の現在年月（YYYY-MM）を取得
+      const today = new Date();
+      const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
       if (amount > 0) {
         setUnsortedExpenses(prev => [
           ...prev,
           {
             id: Date.now().toString(),
-            month: selectedMonth,
+            month: currentMonth,
             amount: amount,
             memo: memo,
           }
@@ -143,7 +150,7 @@ export default function App() {
     return () => {
       subscription.remove();
     };
-  }, [selectedMonth, isDataLoaded]);
+  }, [isDataLoaded]);
 
   const createPanResponder = (type, index, list, setList) => {
     return PanResponder.create({
@@ -206,7 +213,6 @@ export default function App() {
   const [editHistoryWalletId, setEditHistoryWalletId] = useState('');
   const [editHistoryCategoryId, setEditHistoryCategoryId] = useState('');
 
-  // カンマ区切りフォーマット用補助関数
   const formatInputNumber = (val) => {
     const rawNum = val.toString().replace(/[^0-9]/g, '');
     if (!rawNum) return '';
@@ -217,7 +223,6 @@ export default function App() {
     return parseInt(val.toString().replace(/[^0-9]/g, ''), 10) || 0;
   };
 
-  // ホームからの簡易未仕分け支出追加
   const addUnsortedExpense = () => {
     const amount = parseNumber(quickAmount);
     if (!amount) return Alert.alert("エラー", "金額を入力してください");
@@ -236,7 +241,6 @@ export default function App() {
     setQuickMemo('');
   };
 
-  // 未仕分け支出の個別仕分け実行処理
   const executeItemSort = () => {
     if (!selectedUnsortedItem) return;
     if (!sortTargetWalletId) return Alert.alert("エラー", "お財布を選択してください");
@@ -264,14 +268,12 @@ export default function App() {
     Alert.alert("完了", "仕分けが完了しました！");
   };
 
-  // お財布追加処理
   const addWallet = () => {
     if (!newWalletName.trim()) return Alert.alert("エラー", "お財布の名前を入力してください");
     setWallets([...wallets, { id: Date.now().toString(), name: newWalletName, balance: 0, history: [] }]);
     setNewWalletName('');
   };
 
-  // お財布削除処理（使用中ガード付き）
   const deleteWallet = (walletId) => {
     const target = wallets.find(w => w.id === walletId);
     if (target && target.history.length > 0) {
@@ -280,7 +282,6 @@ export default function App() {
     setWallets(wallets.filter(w => w.id !== walletId));
   };
 
-  // お財布リネーム実行
   const saveWalletRename = (id) => {
     if (!editWalletName.trim()) return Alert.alert("エラー", "名前を入力してください");
     setWallets(wallets.map(w => w.id === id ? { ...w, name: editWalletName } : w));
@@ -288,7 +289,6 @@ export default function App() {
     setEditWalletName('');
   };
 
-  // 仕分け実行
   const executeSort = () => {
     const amount = parseNumber(sortAmount);
     if (!amount || !targetWalletId) return Alert.alert("エラー", "金額と財布を選択してください");
@@ -305,7 +305,6 @@ export default function App() {
     Alert.alert("完了", "仕分けしました！");
   };
 
-  // 支出追加実行
   const executeExpense = () => {
     const amount = parseNumber(expenseAmount);
     if (!amount || !expenseWalletId) return Alert.alert("エラー", "金額とお財布を選択してください");
@@ -326,7 +325,6 @@ export default function App() {
     Alert.alert("完了", "支出を記録しました");
   };
 
-  // 収入追加実行
   const executeIncome = () => {
     const amount = parseNumber(incomeAmount);
     if (!amount || !incomeWalletId) return Alert.alert("エラー", "金額とお財布を選択してください");
@@ -346,7 +344,6 @@ export default function App() {
     Alert.alert("完了", "収入を記録しました");
   };
 
-  // 履歴の編集保存（お財布・カテゴリ変更対応）
   const saveHistoryEdit = () => {
     if (!editingHistoryItem) return;
     const newAmount = parseNumber(editHistoryAmount);
@@ -395,7 +392,6 @@ export default function App() {
     Alert.alert("完了", "更新しました");
   };
 
-  // 履歴の削除
   const deleteHistoryItem = (historyId) => {
     const targetWallet = wallets.find(w => w.id === selectedWalletId);
     if (!targetWallet) return;
@@ -417,7 +413,6 @@ export default function App() {
     Alert.alert("完了", "削除しました");
   };
 
-  // カテゴリ追加処理
   const addCategory = () => {
     if (!newCatName.trim()) return Alert.alert("エラー", "カテゴリ名を入力してください");
     setCategories([...categories, { id: Date.now().toString(), name: newCatName, icon: selectedIcon || '🏷️' }]);
@@ -425,7 +420,6 @@ export default function App() {
     setSelectedIcon('🏷️');
   };
 
-  // カテゴリ削除処理（使用中ガード付き）
   const deleteCategory = (catName) => {
     const isUsed = wallets.some(w => w.history.some(h => h.memo === catName));
     if (isUsed) {
@@ -434,7 +428,6 @@ export default function App() {
     setCategories(categories.filter(c => c.name !== catName));
   };
 
-  // カテゴリリネーム実行
   const saveCatRename = (id) => {
     if (!editCatName.trim()) return Alert.alert("エラー", "名前を入力してください");
     setCategories(categories.map(c => c.id === id ? { ...c, name: editCatName } : c));
@@ -442,7 +435,6 @@ export default function App() {
     setEditCatName('');
   };
 
-  // 月間総支出計算
   const getMonthlyTotalExpense = () => {
     let total = 0;
     wallets.forEach(w => {
@@ -455,7 +447,6 @@ export default function App() {
     return total;
   };
 
-  // 年間レポート用データ構築
   const getAnnualReportDetailed = () => {
     const report = {};
     wallets.forEach(w => w.history.forEach(h => {
@@ -592,7 +583,7 @@ export default function App() {
                         style={[styles.input, { flex: 1 }]}
                       />
                       <TextInput
-                        placeholder="メモ (例: コンビニ)"
+                        placeholder="メモ (例: コンコンビニ)"
                         value={quickMemo}
                         onChangeText={setQuickMemo}
                         style={[styles.input, { flex: 1.5 }]}
@@ -640,7 +631,6 @@ export default function App() {
                 <>
                   <Text style={styles.title}>仕分け実行</Text>
                   
-                  {/* 未仕分け資金の入力欄 */}
                   <View style={[styles.cardCol, {marginBottom: 20}]}>
                     <Text style={styles.label}>未仕分け資金の追加・設定</Text>
                     <Text style={styles.amount}>現在: {formatNum(monthlyIncomes[selectedMonth])}円</Text>
@@ -681,13 +671,11 @@ export default function App() {
                 </>
               )}
 
-              {/* 設定タブ（お財布・カテゴリ管理を統合） */}
               {currentTab === 'settings' && (
                 <>
                   <Text style={styles.title}>設定</Text>
                   <Text style={{ color: '#64748b', fontSize: 12, marginBottom: 16 }}>※項目を長押ししながら上下に動かすと並び替えができます</Text>
 
-                  {/* お財布管理セクション */}
                   <Text style={[styles.label, { fontSize: 16, fontWeight: 'bold', color: '#1e293b', marginTop: 8 }]}>👛 お財布管理</Text>
                   <View style={styles.cardCol}>
                     <Text style={styles.label}>新しくお財布を追加</Text>
@@ -753,7 +741,6 @@ export default function App() {
 
                   <View style={{ height: 20 }} />
 
-                  {/* カテゴリ管理セクション */}
                   <Text style={[styles.label, { fontSize: 16, fontWeight: 'bold', color: '#1e293b' }]}>🏷️ カテゴリ管理</Text>
                   <View style={styles.cardCol}>
                     <Text style={styles.label}>新カテゴリの追加</Text>
