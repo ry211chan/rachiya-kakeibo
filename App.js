@@ -93,10 +93,16 @@ export default function App() {
 
   const ITEM_HEIGHT = 74;
 
-  // URLスキーム（Deep Link）受取処理
+  // URLスキーム（Deep Link）受取処理（※データロード完了待機 & 二重追加防止を追加修正）
+  const processedUrlRef = useRef(null);
+
   useEffect(() => {
+    // AsyncStorageからのデータの読み込みが完了するまで処理を待機（コールドスタート時の上書き消去を防ぐ）
+    if (!isDataLoaded) return;
+
     const handleUrl = (url) => {
-      if (!url) return;
+      if (!url || processedUrlRef.current === url) return;
+      processedUrlRef.current = url;
 
       const queryString = url.split('?')[1];
       if (!queryString) return;
@@ -137,7 +143,7 @@ export default function App() {
     return () => {
       subscription.remove();
     };
-  }, [selectedMonth]);
+  }, [selectedMonth, isDataLoaded]);
 
   const createPanResponder = (type, index, list, setList) => {
     return PanResponder.create({
@@ -1114,3 +1120,4 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 20 }
 });
+
