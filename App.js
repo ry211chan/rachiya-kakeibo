@@ -11,6 +11,38 @@ const getTodayString = () => {
   return `${year}-${month}-${day}`;
 };
 
+// URLパース用ヘルパー関数
+const parseCustomUrl = (url) => {
+  if (!url || !url.includes('?')) return null;
+  const queryString = url.split('?')[1];
+  if (!queryString) return null;
+
+  const params = {};
+  queryString.split('&').forEach(param => {
+    const [key, value] = param.split('=');
+    if (key && value) {
+      params[key] = decodeURIComponent(value);
+    }
+  });
+
+  const rawAmount = params.amount || params.price || '0';
+  const amount = parseInt(rawAmount.toString().replace(/[^0-9]/g, ''), 10) || 0;
+  const memo = params.memo || params.title || 'URLスキーム追加';
+
+  if (amount <= 0) return null;
+
+  const todayStr = getTodayString();
+  const currentMonth = todayStr.substring(0, 7);
+
+  return {
+    id: Date.now().toString(),
+    date: todayStr,
+    month: currentMonth,
+    amount: amount,
+    memo: memo,
+  };
+};
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home'); 
   const [selectedWalletId, setSelectedWalletId] = useState(null); 
@@ -103,13 +135,12 @@ export default function App() {
 
   const ITEM_HEIGHT = 74;
 
-  // ▼ URLスキーム受取処理（保存遅延解消のため修正） ▼
+  // ▼ URLスキーム受取処理（修正版） ▼
   const lastProcessedRef = useRef({ url: '', time: 0 });
+  const pendingItemRef = useRef(null);
 
   useEffect(() => {
-    if (!isDataLoaded) return;
-
-    const handleUrl = async (url) => {
+    const handleUrl = (url) => {
       if (!url) return;
 
       const now = Date.now();
@@ -118,44 +149,14 @@ export default function App() {
       }
       lastProcessedRef.current = { url, time: now };
 
-      const queryString = url.split('?')[1];
-      if (!queryString) return;
+      const newItem = parseCustomUrl(url);
+      if (!newItem) return;
 
-      const params = {};
-      queryString.split('&').forEach(param => {
-        const [key, value] = param.split('=');
-        if (key && value) {
-          params[key] = decodeURIComponent(value);
-        }
-      });
-
-      const amount = parseNumber(params.amount || params.price || '0');
-      const memo = params.memo || params.title || 'URLスキーム追加';
-
-      const todayStr = getTodayString();
-      const currentMonth = todayStr.substring(0, 7);
-
-      if (amount > 0) {
-        try {
-          const stored = await AsyncStorage.getItem('unsortedExpenses');
-          const currentList = stored ? JSON.parse(stored) : [];
-          const updatedList = [
-            ...currentList,
-            {
-              id: Date.now().toString(),
-              date: todayStr,
-              month: currentMonth,
-              amount: amount,
-              memo: memo,
-            }
-          ];
-
-          await AsyncStorage.setItem('unsortedExpenses', JSON.stringify(updatedList));
-          setUnsortedExpenses(updatedList);
-          Alert.alert("受付完了", `未仕分け支出を追加しました\n金額: ${amount.toLocaleString()}円\nメモ: ${memo}`);
-        } catch (e) {
-          console.error("Failed to save URL expense", e);
-        }
+      if (!isDataLoaded) {
+        pendingItemRef.current = newItem;
+      } else {
+        setUnsortedExpenses(prev => [...prev, newItem]);
+        Alert.alert("受付完了", `未仕分け支出を追加しました\n金額: ${newItem.amount.toLocaleString()}円\nメモ: ${newItem.memo}`);
       }
     };
 
@@ -170,6 +171,15 @@ export default function App() {
     return () => {
       subscription.remove();
     };
+  }, []);
+
+  useEffect(() => {
+    if (isDataLoaded && pendingItemRef.current) {
+      const newItem = pendingItemRef.current;
+      setUnsortedExpenses(prev => [...prev, newItem]);
+      Alert.alert("受付完了", `未仕分け支出を追加しました\n金額: ${newItem.amount.toLocaleString()}円\nメモ: ${newItem.memo}`);
+      pendingItemRef.current = null;
+    }
   }, [isDataLoaded]);
 
   const createPanResponder = (type, index, list, setList) => {
@@ -246,15 +256,14 @@ export default function App() {
     return parseInt(val.toString().replace(/[^0-9]/g, ''), 10) || 0;
   };
 
-  // ▼ 手軽メモ追加処理（保存遅延解消のため修正） ▼
-  const addUnsortedExpense = async () => {
+  const addUnsortedExpense = () => {
     const amount = parseNumber(quickAmount);
     if (!amount) return Alert.alert("エラー", "金額を入力してください");
 
     const recordDate = quickDate && quickDate.trim() ? quickDate.trim() : getTodayString();
     const recordMonth = recordDate.length >= 7 ? recordDate.substring(0, 7) : selectedMonth;
 
-    const updatedList = [
+    setUnsortedExpenses([
       ...unsortedExpenses,
       {
         id: Date.now().toString(),
@@ -263,14 +272,7 @@ export default function App() {
         amount: amount,
         memo: quickMemo || '未仕分けメモ',
       }
-    ];
-
-    setUnsortedExpenses(updatedList);
-    try {
-      await AsyncStorage.setItem('unsortedExpenses', JSON.stringify(updatedList));
-    } catch (e) {
-      console.error("Failed to save unsorted expense", e);
-    }
+    ]);
 
     setQuickAmount('');
     setQuickMemo('');
@@ -667,7 +669,7 @@ export default function App() {
                           style={[styles.input, { flex: 1 }]}
                         />
                         <TextInput
-                          placeholder="メモ (例: コンビニ)"
+                          placeholder="メモ (例: コンコンビニ)"
                           value={quickMemo}
                           onChangeText={setQuickMemo}
                           style={[styles.input, { flex: 1.5 }]}
