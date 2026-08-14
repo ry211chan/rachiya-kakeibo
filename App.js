@@ -21,6 +21,7 @@ export default function App() {
   const [selectedUnsortedItem, setSelectedUnsortedItem] = useState(null);
   const [sortTargetWalletId, setSortTargetWalletId] = useState('');
   const [sortTargetCategoryId, setSortTargetCategoryId] = useState('');
+  const [sortTargetMonth, setSortTargetMonth] = useState('');
 
   // お財布データ
   const [wallets, setWallets] = useState([
@@ -243,6 +244,7 @@ export default function App() {
     if (!selectedUnsortedItem) return;
     if (!sortTargetWalletId) return Alert.alert("エラー", "お財布を選択してください");
 
+    const targetMonth = sortTargetMonth || selectedUnsortedItem.month;
     const selectedCategory = categories.find(c => c.id === sortTargetCategoryId);
     const categoryName = selectedCategory ? selectedCategory.name : selectedUnsortedItem.memo;
 
@@ -251,7 +253,7 @@ export default function App() {
       balance: w.balance - selectedUnsortedItem.amount,
       history: [...w.history, { 
         id: Date.now().toString(), 
-        month: selectedUnsortedItem.month, 
+        month: targetMonth, 
         memo: categoryName, 
         detailMemo: selectedUnsortedItem.memo,
         amount: -selectedUnsortedItem.amount 
@@ -263,6 +265,7 @@ export default function App() {
     setSelectedUnsortedItem(null);
     setSortTargetWalletId('');
     setSortTargetCategoryId('');
+    setSortTargetMonth('');
     Alert.alert("完了", "仕分けが完了しました！");
   };
 
@@ -581,7 +584,7 @@ export default function App() {
                         style={[styles.input, { flex: 1 }]}
                       />
                       <TextInput
-                        placeholder="メモ (例: コンビニ)"
+                        placeholder="メモ (例: コンコンビニ)"
                         value={quickMemo}
                         onChangeText={setQuickMemo}
                         style={[styles.input, { flex: 1.5 }]}
@@ -604,7 +607,10 @@ export default function App() {
                       unsortedExpenses.map(u => (
                         <TouchableOpacity 
                           key={u.id} 
-                          onPress={() => setSelectedUnsortedItem(u)}
+                          onPress={() => {
+                            setSelectedUnsortedItem(u);
+                            setSortTargetMonth(u.month);
+                          }}
                           style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#fed7d7' }}
                         >
                           <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
@@ -948,10 +954,30 @@ export default function App() {
                 <View style={[styles.cardCol, { backgroundColor: '#f8fafc', marginBottom: 15 }]}>
                   <Text style={styles.label}>メモ: {selectedUnsortedItem.memo}</Text>
                   <Text style={[styles.amount, { color: '#e53e3e' }]}>{formatNum(selectedUnsortedItem.amount)}円</Text>
+                  <Text style={{ color: '#0284c7', fontSize: 13, marginTop: 4, fontWeight: 'bold' }}>
+                    📅 計上月: {parseInt((sortTargetMonth || selectedUnsortedItem.month).split('-')[1])}月分 ({sortTargetMonth || selectedUnsortedItem.month})
+                  </Text>
                 </View>
               )}
 
-              <Text style={styles.label}>1. お財布を選択（必須）</Text>
+              <Text style={styles.label}>1. 計上する月を選択（デフォルト: {selectedUnsortedItem ? `${parseInt(selectedUnsortedItem.month.split('-')[1])}月分` : ''}）</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 15}}>
+                {months.map(m => (
+                  <TouchableOpacity 
+                    key={m} 
+                    onPress={() => setSortTargetMonth(m)} 
+                    style={[
+                      styles.card, 
+                      { marginRight: 8, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 0 },
+                      (sortTargetMonth || (selectedUnsortedItem && selectedUnsortedItem.month)) === m && { borderColor: '#0284c7', borderWidth: 2, backgroundColor: '#e0f2fe' }
+                    ]}
+                  >
+                    <Text style={{ fontWeight: (sortTargetMonth || (selectedUnsortedItem && selectedUnsortedItem.month)) === m ? 'bold' : 'normal' }}>{parseInt(m.split('-')[1])}月</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={styles.label}>2. お財布を選択（必須）</Text>
               {wallets.map(w => (
                 <TouchableOpacity 
                   key={w.id} 
@@ -962,7 +988,7 @@ export default function App() {
                 </TouchableOpacity>
               ))}
 
-              <Text style={styles.label}>2. カテゴリを選択（任意・年間レポートに反映）</Text>
+              <Text style={styles.label}>3. カテゴリを選択（任意・年間レポートに反映）</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 15}}>
                 {categories.map(c => (
                   <TouchableOpacity 
@@ -983,7 +1009,7 @@ export default function App() {
                 <Text style={styles.btnText}>仕分ける</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={{marginTop: 15, alignItems: 'center'}} onPress={() => setSelectedUnsortedItem(null)}>
+              <TouchableOpacity style={{marginTop: 15, alignItems: 'center'}} onPress={() => { setSelectedUnsortedItem(null); setSortTargetMonth(''); }}>
                 <Text style={{color: '#666'}}>キャンセル</Text>
               </TouchableOpacity>
             </ScrollView>
@@ -1107,3 +1133,4 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 20 }
 });
+
