@@ -103,13 +103,13 @@ export default function App() {
 
   const ITEM_HEIGHT = 74;
 
-  // ▼ URLスキーム受取処理 ▼
+  // ▼ URLスキーム受取処理（保存遅延解消のため修正） ▼
   const lastProcessedRef = useRef({ url: '', time: 0 });
 
   useEffect(() => {
     if (!isDataLoaded) return;
 
-    const handleUrl = (url) => {
+    const handleUrl = async (url) => {
       if (!url) return;
 
       const now = Date.now();
@@ -136,17 +136,26 @@ export default function App() {
       const currentMonth = todayStr.substring(0, 7);
 
       if (amount > 0) {
-        setUnsortedExpenses(prev => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            date: todayStr,
-            month: currentMonth,
-            amount: amount,
-            memo: memo,
-          }
-        ]);
-        Alert.alert("受付完了", `未仕分け支出を追加しました\n金額: ${amount.toLocaleString()}円\nメモ: ${memo}`);
+        try {
+          const stored = await AsyncStorage.getItem('unsortedExpenses');
+          const currentList = stored ? JSON.parse(stored) : [];
+          const updatedList = [
+            ...currentList,
+            {
+              id: Date.now().toString(),
+              date: todayStr,
+              month: currentMonth,
+              amount: amount,
+              memo: memo,
+            }
+          ];
+
+          await AsyncStorage.setItem('unsortedExpenses', JSON.stringify(updatedList));
+          setUnsortedExpenses(updatedList);
+          Alert.alert("受付完了", `未仕分け支出を追加しました\n金額: ${amount.toLocaleString()}円\nメモ: ${memo}`);
+        } catch (e) {
+          console.error("Failed to save URL expense", e);
+        }
       }
     };
 
@@ -237,14 +246,15 @@ export default function App() {
     return parseInt(val.toString().replace(/[^0-9]/g, ''), 10) || 0;
   };
 
-  const addUnsortedExpense = () => {
+  // ▼ 手軽メモ追加処理（保存遅延解消のため修正） ▼
+  const addUnsortedExpense = async () => {
     const amount = parseNumber(quickAmount);
     if (!amount) return Alert.alert("エラー", "金額を入力してください");
 
     const recordDate = quickDate && quickDate.trim() ? quickDate.trim() : getTodayString();
     const recordMonth = recordDate.length >= 7 ? recordDate.substring(0, 7) : selectedMonth;
 
-    setUnsortedExpenses([
+    const updatedList = [
       ...unsortedExpenses,
       {
         id: Date.now().toString(),
@@ -253,7 +263,14 @@ export default function App() {
         amount: amount,
         memo: quickMemo || '未仕分けメモ',
       }
-    ]);
+    ];
+
+    setUnsortedExpenses(updatedList);
+    try {
+      await AsyncStorage.setItem('unsortedExpenses', JSON.stringify(updatedList));
+    } catch (e) {
+      console.error("Failed to save unsorted expense", e);
+    }
 
     setQuickAmount('');
     setQuickMemo('');
@@ -650,7 +667,7 @@ export default function App() {
                           style={[styles.input, { flex: 1 }]}
                         />
                         <TextInput
-                          placeholder="メモ (例: コンコンビニ)"
+                          placeholder="メモ (例: コンビニ)"
                           value={quickMemo}
                           onChangeText={setQuickMemo}
                           style={[styles.input, { flex: 1.5 }]}
