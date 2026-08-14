@@ -91,7 +91,7 @@ export default function App() {
 
   const ITEM_HEIGHT = 74;
 
-  // ▼ URLスキーム受取処理（3秒以内の連打重複のみを防御する方式へ変更） ▼
+  // ▼ URLスキーム受取処理 ▼
   const lastProcessedRef = useRef({ url: '', time: 0 });
 
   useEffect(() => {
@@ -101,7 +101,6 @@ export default function App() {
       if (!url) return;
 
       const now = Date.now();
-      // 3秒以内に全く同一のURLが受信された場合のみ「アプリ起動時等の二重発火」としてブロック
       if (lastProcessedRef.current.url === url && (now - lastProcessedRef.current.time) < 3000) {
         return;
       }
@@ -121,7 +120,6 @@ export default function App() {
       const amount = parseNumber(params.amount || params.price || '0');
       const memo = params.memo || params.title || 'URLスキーム追加';
 
-      // 決済発生時の現在年月（YYYY-MM）を取得
       const today = new Date();
       const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 
@@ -583,7 +581,7 @@ export default function App() {
                         style={[styles.input, { flex: 1 }]}
                       />
                       <TextInput
-                        placeholder="メモ (例: コンコンビニ)"
+                        placeholder="メモ (例: コンビニ)"
                         value={quickMemo}
                         onChangeText={setQuickMemo}
                         style={[styles.input, { flex: 1.5 }]}
@@ -594,16 +592,16 @@ export default function App() {
                     </View>
                   </View>
 
-                  {/* 未仕分け支出（タップで仕分け可能） */}
+                  {/* 未仕分け支出（全月共通で常に表示） */}
                   <View style={[styles.cardCol, { backgroundColor: '#fff5f5', borderColor: '#feb2b2', borderWidth: 1 }]}>
                     <Text style={[styles.label, { color: '#c53030', fontWeight: 'bold', marginBottom: 8 }]}>
                       以下の支出を仕分けてください（タップで仕分け）
                     </Text>
 
-                    {unsortedExpenses.filter(u => u.month === selectedMonth).length === 0 ? (
+                    {unsortedExpenses.length === 0 ? (
                       <Text style={{ color: '#a0aec0', fontSize: 13, fontStyle: 'italic' }}>未仕分けの支出メモはありません</Text>
                     ) : (
-                      unsortedExpenses.filter(u => u.month === selectedMonth).map(u => (
+                      unsortedExpenses.map(u => (
                         <TouchableOpacity 
                           key={u.id} 
                           onPress={() => setSelectedUnsortedItem(u)}
@@ -611,7 +609,9 @@ export default function App() {
                         >
                           <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
                             <Text style={{fontSize: 12, color: '#c53030'}}>👉</Text>
-                            <Text style={{ color: '#2d3748', fontWeight: '500' }}>{u.memo}</Text>
+                            <Text style={{ color: '#2d3748', fontWeight: '500' }}>
+                              {u.memo} <Text style={{fontSize: 11, color: '#888'}}>({parseInt(u.month.split('-')[1])}月分)</Text>
+                            </Text>
                           </View>
                           <Text style={{ color: '#e53e3e', fontWeight: 'bold' }}>{formatNum(u.amount)}円</Text>
                         </TouchableOpacity>
@@ -1107,4 +1107,3 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 20 }
 });
-
