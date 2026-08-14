@@ -2,6 +2,15 @@ import React, { useState, useRef, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, SafeAreaView, StatusBar, Modal, PanResponder, Animated, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// 本日の日付を取得するヘルパー関数 (YYYY-MM-DD)
+const getTodayString = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState('home'); 
   const [selectedWalletId, setSelectedWalletId] = useState(null); 
@@ -16,12 +25,14 @@ export default function App() {
   const [unsortedExpenses, setUnsortedExpenses] = useState([]);
   const [quickAmount, setQuickAmount] = useState('');
   const [quickMemo, setQuickMemo] = useState('');
+  const [quickDate, setQuickDate] = useState(getTodayString());
 
   // 未仕分け支出の個別仕分け用モーダルステート
   const [selectedUnsortedItem, setSelectedUnsortedItem] = useState(null);
   const [sortTargetWalletId, setSortTargetWalletId] = useState('');
   const [sortTargetCategoryId, setSortTargetCategoryId] = useState('');
   const [sortTargetMonth, setSortTargetMonth] = useState('');
+  const [sortTargetDate, setSortTargetDate] = useState('');
 
   // お財布データ
   const [wallets, setWallets] = useState([
@@ -121,14 +132,15 @@ export default function App() {
       const amount = parseNumber(params.amount || params.price || '0');
       const memo = params.memo || params.title || 'URLスキーム追加';
 
-      const today = new Date();
-      const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+      const todayStr = getTodayString();
+      const currentMonth = todayStr.substring(0, 7);
 
       if (amount > 0) {
         setUnsortedExpenses(prev => [
           ...prev,
           {
             id: Date.now().toString(),
+            date: todayStr,
             month: currentMonth,
             amount: amount,
             memo: memo,
@@ -198,12 +210,14 @@ export default function App() {
   const [expenseMemo, setExpenseMemo] = useState('');
   const [expenseWalletId, setExpenseWalletId] = useState('');
   const [expenseCategoryId, setExpenseCategoryId] = useState('');
+  const [expenseDate, setExpenseDate] = useState(getTodayString());
 
   // 収入入力用ステート
   const [incomeModalVisible, setIncomeModalVisible] = useState(false);
   const [incomeAmount, setIncomeAmount] = useState('');
   const [incomeMemo, setIncomeMemo] = useState('');
   const [incomeWalletId, setIncomeWalletId] = useState('');
+  const [incomeDate, setIncomeDate] = useState(getTodayString());
 
   // 履歴詳細・編集用ステート
   const [editingHistoryItem, setEditingHistoryItem] = useState(null);
@@ -211,6 +225,7 @@ export default function App() {
   const [editHistoryAmount, setEditHistoryAmount] = useState('');
   const [editHistoryWalletId, setEditHistoryWalletId] = useState('');
   const [editHistoryCategoryId, setEditHistoryCategoryId] = useState('');
+  const [editHistoryDate, setEditHistoryDate] = useState('');
 
   const formatInputNumber = (val) => {
     const rawNum = val.toString().replace(/[^0-9]/g, '');
@@ -226,11 +241,15 @@ export default function App() {
     const amount = parseNumber(quickAmount);
     if (!amount) return Alert.alert("エラー", "金額を入力してください");
 
+    const recordDate = quickDate && quickDate.trim() ? quickDate.trim() : getTodayString();
+    const recordMonth = recordDate.length >= 7 ? recordDate.substring(0, 7) : selectedMonth;
+
     setUnsortedExpenses([
       ...unsortedExpenses,
       {
         id: Date.now().toString(),
-        month: selectedMonth,
+        date: recordDate,
+        month: recordMonth,
         amount: amount,
         memo: quickMemo || '未仕分けメモ',
       }
@@ -238,13 +257,15 @@ export default function App() {
 
     setQuickAmount('');
     setQuickMemo('');
+    setQuickDate(getTodayString());
   };
 
   const executeItemSort = () => {
     if (!selectedUnsortedItem) return;
     if (!sortTargetWalletId) return Alert.alert("エラー", "お財布を選択してください");
 
-    const targetMonth = sortTargetMonth || selectedUnsortedItem.month;
+    const recordDate = sortTargetDate && sortTargetDate.trim() ? sortTargetDate.trim() : (selectedUnsortedItem.date || getTodayString());
+    const targetMonth = sortTargetMonth || (recordDate.length >= 7 ? recordDate.substring(0, 7) : selectedUnsortedItem.month);
     const selectedCategory = categories.find(c => c.id === sortTargetCategoryId);
     const categoryName = selectedCategory ? selectedCategory.name : selectedUnsortedItem.memo;
 
@@ -253,6 +274,7 @@ export default function App() {
       balance: w.balance - selectedUnsortedItem.amount,
       history: [...w.history, { 
         id: Date.now().toString(), 
+        date: recordDate,
         month: targetMonth, 
         memo: categoryName, 
         detailMemo: selectedUnsortedItem.memo,
@@ -266,6 +288,7 @@ export default function App() {
     setSortTargetWalletId('');
     setSortTargetCategoryId('');
     setSortTargetMonth('');
+    setSortTargetDate('');
     Alert.alert("完了", "仕分けが完了しました！");
   };
 
@@ -295,11 +318,13 @@ export default function App() {
     if (!amount || !targetWalletId) return Alert.alert("エラー", "金額と財布を選択してください");
     if ((monthlyIncomes[selectedMonth] || 0) < amount) return Alert.alert("エラー", "資金が足りません");
 
+    const todayStr = getTodayString();
+
     setMonthlyIncomes({ ...monthlyIncomes, [selectedMonth]: (monthlyIncomes[selectedMonth] || 0) - amount });
     setWallets(wallets.map(w => w.id === targetWalletId ? {
       ...w, 
       balance: w.balance + amount,
-      history: [...w.history, { id: Date.now().toString(), month: selectedMonth, memo: '仕分け受取', detailMemo: '', amount: amount }]
+      history: [...w.history, { id: Date.now().toString(), date: todayStr, month: selectedMonth, memo: '仕分け受取', detailMemo: '', amount: amount }]
     } : w));
     
     setSortAmount('');
@@ -310,18 +335,22 @@ export default function App() {
     const amount = parseNumber(expenseAmount);
     if (!amount || !expenseWalletId) return Alert.alert("エラー", "金額とお財布を選択してください");
 
+    const recordDate = expenseDate && expenseDate.trim() ? expenseDate.trim() : getTodayString();
+    const recordMonth = recordDate.length >= 7 ? recordDate.substring(0, 7) : selectedMonth;
+
     const selectedCategory = categories.find(c => c.id === expenseCategoryId);
     const categoryName = selectedCategory ? selectedCategory.name : (expenseMemo || 'その他支出');
 
     setWallets(wallets.map(w => w.id === expenseWalletId ? {
       ...w,
       balance: w.balance - amount,
-      history: [...w.history, { id: Date.now().toString(), month: selectedMonth, memo: categoryName, detailMemo: expenseMemo, amount: -amount }]
+      history: [...w.history, { id: Date.now().toString(), date: recordDate, month: recordMonth, memo: categoryName, detailMemo: expenseMemo, amount: -amount }]
     } : w));
 
     setExpenseAmount('');
     setExpenseMemo('');
     setExpenseCategoryId('');
+    setExpenseDate(getTodayString());
     setExpenseModalVisible(false);
     Alert.alert("完了", "支出を記録しました");
   };
@@ -330,17 +359,21 @@ export default function App() {
     const amount = parseNumber(incomeAmount);
     if (!amount || !incomeWalletId) return Alert.alert("エラー", "金額とお財布を選択してください");
 
+    const recordDate = incomeDate && incomeDate.trim() ? incomeDate.trim() : getTodayString();
+    const recordMonth = recordDate.length >= 7 ? recordDate.substring(0, 7) : selectedMonth;
+
     const memoText = incomeMemo.trim() || '収入';
 
     setWallets(wallets.map(w => w.id === incomeWalletId ? {
       ...w,
       balance: w.balance + amount,
-      history: [...w.history, { id: Date.now().toString(), month: selectedMonth, memo: '収入', detailMemo: memoText, amount: amount }]
+      history: [...w.history, { id: Date.now().toString(), date: recordDate, month: recordMonth, memo: '収入', detailMemo: memoText, amount: amount }]
     } : w));
 
     setIncomeAmount('');
     setIncomeMemo('');
     setIncomeWalletId('');
+    setIncomeDate(getTodayString());
     setIncomeModalVisible(false);
     Alert.alert("完了", "収入を記録しました");
   };
@@ -349,6 +382,9 @@ export default function App() {
     if (!editingHistoryItem) return;
     const newAmount = parseNumber(editHistoryAmount);
     if (!newAmount) return Alert.alert("エラー", "金額を入力してください");
+
+    const recordDate = editHistoryDate && editHistoryDate.trim() ? editHistoryDate.trim() : (editingHistoryItem.date || getTodayString());
+    const recordMonth = recordDate.length >= 7 ? recordDate.substring(0, 7) : editingHistoryItem.month;
 
     const sign = editingHistoryItem.amount < 0 ? -1 : 1;
     const updatedAmount = newAmount * sign;
@@ -372,6 +408,8 @@ export default function App() {
         if (w.id === editHistoryWalletId) {
           const updatedHistoryItem = {
             ...editingHistoryItem,
+            date: recordDate,
+            month: recordMonth,
             amount: updatedAmount,
             memo: updatedCategoryName,
             detailMemo: editHistoryMemo
@@ -500,49 +538,70 @@ export default function App() {
                 const wallet = wallets.find(w => w.id === selectedWalletId);
                 if (!wallet) return null;
 
+                const monthlyHistoryAll = wallet.history.filter(h => h.month === selectedMonth);
+                const monthlyIncomeTotal = monthlyHistoryAll.filter(h => h.amount > 0).reduce((sum, h) => sum + h.amount, 0);
+                const monthlyExpenseTotal = monthlyHistoryAll.filter(h => h.amount < 0).reduce((sum, h) => sum + Math.abs(h.amount), 0);
+                const monthlyBalanceTotal = monthlyIncomeTotal - monthlyExpenseTotal;
+
                 let runningBalance = 0;
                 const historyWithBalance = wallet.history.map(h => {
                   runningBalance += h.amount;
                   return { ...h, currentBalance: runningBalance };
                 });
 
+                const filteredHistory = historyWithBalance.filter(h => h.month === selectedMonth);
+
                 return (
                   <>
                     <View style={{ marginBottom: 16 }}>
-                      <Text style={styles.title}>{wallet.name} 履歴</Text>
-                      <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#333', marginTop: 4 }}>
-                        現在の最終残金: {formatNum(wallet.balance)}円
-                      </Text>
+                      <Text style={styles.title}>{wallet.name} 履歴 ({parseInt(selectedMonth.split('-')[1])}月)</Text>
+                      <View style={{ backgroundColor: '#fff', padding: 14, borderRadius: 12, marginTop: 8, elevation: 1 }}>
+                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1e293b' }}>
+                          {parseInt(selectedMonth.split('-')[1])}月の収支: <Text style={{ color: monthlyBalanceTotal >= 0 ? '#2b6cb0' : '#e53e3e' }}>{monthlyBalanceTotal >= 0 ? '+' : ''}{formatNum(monthlyBalanceTotal)}円</Text>
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
+                          (収入: {formatNum(monthlyIncomeTotal)}円 / 支出: {formatNum(monthlyExpenseTotal)}円)
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#333', marginTop: 6, fontWeight: '500' }}>
+                          お財布の累計残金: {formatNum(wallet.balance)}円
+                        </Text>
+                      </View>
                     </View>
                     
-                    {historyWithBalance.map(h => (
-                      <View key={h.id} style={styles.cardCol}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <View>
-                            <Text style={styles.bold}>{h.memo}</Text>
-                            {h.detailMemo ? <Text style={{ color: '#64748b', fontSize: 13, marginTop: 2 }}>📝 {h.detailMemo}</Text> : null}
-                          </View>
-                          <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={[styles.bold, { color: h.amount < 0 ? '#e53e3e' : '#2b6cb0' }]}>{formatNum(h.amount)}円</Text>
-                            <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>({formatNum(h.currentBalance)}円)</Text>
-                            
-                            <TouchableOpacity 
-                              onPress={() => {
-                                setEditingHistoryItem(h);
-                                setEditHistoryMemo(h.detailMemo || '');
-                                setEditHistoryAmount(formatInputNumber(Math.abs(h.amount).toString()));
-                                setEditHistoryWalletId(selectedWalletId);
-                                const currentCat = categories.find(c => c.name === h.memo);
-                                setEditHistoryCategoryId(currentCat ? currentCat.id : '');
-                              }}
-                              style={{ marginTop: 4 }}
-                            >
-                              <Text style={{ color: '#5cacee', fontSize: 12 }}>編集</Text>
-                            </TouchableOpacity>
+                    {filteredHistory.length === 0 ? (
+                      <Text style={{ textAlign: 'center', color: '#888', marginTop: 20 }}>{parseInt(selectedMonth.split('-')[1])}月の履歴はありません</Text>
+                    ) : (
+                      filteredHistory.map(h => (
+                        <View key={h.id} style={styles.cardCol}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <View>
+                              <Text style={styles.bold}>{h.memo}</Text>
+                              {h.date ? <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>📅 {h.date}</Text> : null}
+                              {h.detailMemo ? <Text style={{ color: '#64748b', fontSize: 13, marginTop: 2 }}>📝 {h.detailMemo}</Text> : null}
+                            </View>
+                            <View style={{ alignItems: 'flex-end' }}>
+                              <Text style={[styles.bold, { color: h.amount < 0 ? '#e53e3e' : '#2b6cb0' }]}>{formatNum(h.amount)}円</Text>
+                              <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>({formatNum(h.currentBalance)}円)</Text>
+                              
+                              <TouchableOpacity 
+                                onPress={() => {
+                                  setEditingHistoryItem(h);
+                                  setEditHistoryDate(h.date || getTodayString());
+                                  setEditHistoryMemo(h.detailMemo || '');
+                                  setEditHistoryAmount(formatInputNumber(Math.abs(h.amount).toString()));
+                                  setEditHistoryWalletId(selectedWalletId);
+                                  const currentCat = categories.find(c => c.name === h.memo);
+                                  setEditHistoryCategoryId(currentCat ? currentCat.id : '');
+                                }}
+                                style={{ marginTop: 4 }}
+                              >
+                                <Text style={{ color: '#5cacee', fontSize: 12 }}>編集</Text>
+                              </TouchableOpacity>
+                            </View>
                           </View>
                         </View>
-                      </View>
-                    ))}
+                      ))
+                    )}
                   </>
                 );
               })()}
@@ -557,10 +616,10 @@ export default function App() {
                   <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
                     <Text style={styles.title}>ホーム</Text>
                     <View style={{flexDirection: 'row', gap: 6}}>
-                      <TouchableOpacity style={[styles.expenseBtn, { backgroundColor: '#2b6cb0' }]} onPress={() => setIncomeModalVisible(true)}>
+                      <TouchableOpacity style={[styles.expenseBtn, { backgroundColor: '#2b6cb0' }]} onPress={() => { setIncomeDate(getTodayString()); setIncomeModalVisible(true); }}>
                         <Text style={styles.expenseBtnText}>＋ 収入を入力</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.expenseBtn} onPress={() => setExpenseModalVisible(true)}>
+                      <TouchableOpacity style={styles.expenseBtn} onPress={() => { setExpenseDate(getTodayString()); setExpenseModalVisible(true); }}>
                         <Text style={styles.expenseBtnText}>＋ 支出を入力</Text>
                       </TouchableOpacity>
                     </View>
@@ -575,23 +634,31 @@ export default function App() {
                   {/* 手軽にメモ（未仕分け支出入力枠） */}
                   <View style={[styles.cardCol, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd', borderWidth: 1 }]}>
                     <Text style={[styles.label, { color: '#0369a1', fontWeight: 'bold' }]}>📝 手軽にメモ支出を追加</Text>
-                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                    <View style={{ gap: 8, marginTop: 6 }}>
                       <TextInput
-                        keyboardType="numeric"
-                        placeholder="金額 (円)"
-                        value={quickAmount}
-                        onChangeText={(t) => setQuickAmount(formatInputNumber(t))}
-                        style={[styles.input, { flex: 1 }]}
+                        placeholder="日付 (例: 2026-08-14)"
+                        value={quickDate}
+                        onChangeText={setQuickDate}
+                        style={styles.inputFull}
                       />
-                      <TextInput
-                        placeholder="メモ (例: コンコンビニ)"
-                        value={quickMemo}
-                        onChangeText={setQuickMemo}
-                        style={[styles.input, { flex: 1.5 }]}
-                      />
-                      <TouchableOpacity style={[styles.btn, { backgroundColor: '#0284c7' }]} onPress={addUnsortedExpense}>
-                        <Text style={styles.btnText}>追加</Text>
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TextInput
+                          keyboardType="numeric"
+                          placeholder="金額 (円)"
+                          value={quickAmount}
+                          onChangeText={(t) => setQuickAmount(formatInputNumber(t))}
+                          style={[styles.input, { flex: 1 }]}
+                        />
+                        <TextInput
+                          placeholder="メモ (例: コンコンビニ)"
+                          value={quickMemo}
+                          onChangeText={setQuickMemo}
+                          style={[styles.input, { flex: 1.5 }]}
+                        />
+                        <TouchableOpacity style={[styles.btn, { backgroundColor: '#0284c7' }]} onPress={addUnsortedExpense}>
+                          <Text style={styles.btnText}>追加</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
 
@@ -610,14 +677,18 @@ export default function App() {
                           onPress={() => {
                             setSelectedUnsortedItem(u);
                             setSortTargetMonth(u.month);
+                            setSortTargetDate(u.date || getTodayString());
                           }}
                           style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#fed7d7' }}
                         >
                           <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
                             <Text style={{fontSize: 12, color: '#c53030'}}>👉</Text>
-                            <Text style={{ color: '#2d3748', fontWeight: '500' }}>
-                              {u.memo} <Text style={{fontSize: 11, color: '#888'}}>({parseInt(u.month.split('-')[1])}月分)</Text>
-                            </Text>
+                            <View>
+                              <Text style={{ color: '#2d3748', fontWeight: '500' }}>
+                                {u.memo} <Text style={{fontSize: 11, color: '#888'}}>({parseInt(u.month.split('-')[1])}月分)</Text>
+                              </Text>
+                              {u.date ? <Text style={{ fontSize: 11, color: '#a0aec0' }}>📅 {u.date}</Text> : null}
+                            </View>
                           </View>
                           <Text style={{ color: '#e53e3e', fontWeight: 'bold' }}>{formatNum(u.amount)}円</Text>
                         </TouchableOpacity>
@@ -625,12 +696,29 @@ export default function App() {
                     )}
                   </View>
 
-                  {wallets.map(w => (
-                    <TouchableOpacity key={w.id} style={styles.card} onPress={() => setSelectedWalletId(w.id)}>
-                      <Text style={styles.bold}>{w.name}</Text>
-                      <Text style={{fontWeight: 'bold', fontSize: 16}}>{formatNum(w.balance)}円</Text>
-                    </TouchableOpacity>
-                  ))}
+                  {wallets.map(w => {
+                    const monthHistory = w.history.filter(h => h.month === selectedMonth);
+                    const mIncome = monthHistory.filter(h => h.amount > 0).reduce((sum, h) => sum + h.amount, 0);
+                    const mExpense = monthHistory.filter(h => h.amount < 0).reduce((sum, h) => sum + Math.abs(h.amount), 0);
+                    const mBalance = mIncome - mExpense;
+
+                    return (
+                      <TouchableOpacity key={w.id} style={styles.card} onPress={() => setSelectedWalletId(w.id)}>
+                        <View>
+                          <Text style={styles.bold}>{w.name}</Text>
+                          <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                            {parseInt(selectedMonth.split('-')[1])}月 収: {formatNum(mIncome)} / 支: {formatNum(mExpense)}
+                          </Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ fontWeight: 'bold', fontSize: 16, color: mBalance >= 0 ? '#2b6cb0' : '#e53e3e' }}>
+                            {mBalance >= 0 ? '+' : ''}{formatNum(mBalance)}円
+                          </Text>
+                          <Text style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>累計: {formatNum(w.balance)}円</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </>
               )}
               {currentTab === 'sortFunds' && (
@@ -860,6 +948,14 @@ export default function App() {
           <View style={styles.modalOverlay}>
             <ScrollView contentContainerStyle={styles.modalContent}>
               <Text style={styles.title}>💰 収入の入力</Text>
+
+              <Text style={styles.label}>日付 (YYYY-MM-DD)</Text>
+              <TextInput 
+                placeholder="例: 2026-08-14" 
+                value={incomeDate} 
+                onChangeText={setIncomeDate} 
+                style={styles.inputFull} 
+              />
               
               <Text style={styles.label}>金額</Text>
               <TextInput 
@@ -896,6 +992,14 @@ export default function App() {
           <View style={styles.modalOverlay}>
             <ScrollView contentContainerStyle={styles.modalContent}>
               <Text style={styles.title}>💸 支出の入力</Text>
+
+              <Text style={styles.label}>日付 (YYYY-MM-DD)</Text>
+              <TextInput 
+                placeholder="例: 2026-08-14" 
+                value={expenseDate} 
+                onChangeText={setExpenseDate} 
+                style={styles.inputFull} 
+              />
               
               <Text style={styles.label}>金額</Text>
               <TextInput 
@@ -960,6 +1064,17 @@ export default function App() {
                 </View>
               )}
 
+              <Text style={styles.label}>日付 (YYYY-MM-DD)</Text>
+              <TextInput 
+                placeholder="例: 2026-08-14" 
+                value={sortTargetDate} 
+                onChangeText={(t) => {
+                  setSortTargetDate(t);
+                  if (t.length >= 7) setSortTargetMonth(t.substring(0, 7));
+                }} 
+                style={styles.inputFull} 
+              />
+
               <Text style={styles.label}>1. 計上する月を選択（デフォルト: {selectedUnsortedItem ? `${parseInt(selectedUnsortedItem.month.split('-')[1])}月分` : ''}）</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 15}}>
                 {months.map(m => (
@@ -1009,7 +1124,7 @@ export default function App() {
                 <Text style={styles.btnText}>仕分ける</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={{marginTop: 15, alignItems: 'center'}} onPress={() => { setSelectedUnsortedItem(null); setSortTargetMonth(''); }}>
+              <TouchableOpacity style={{marginTop: 15, alignItems: 'center'}} onPress={() => { setSelectedUnsortedItem(null); setSortTargetMonth(''); setSortTargetDate(''); }}>
                 <Text style={{color: '#666'}}>キャンセル</Text>
               </TouchableOpacity>
             </ScrollView>
@@ -1021,6 +1136,14 @@ export default function App() {
           <View style={styles.modalOverlay}>
             <ScrollView contentContainerStyle={styles.modalContent}>
               <Text style={styles.title}>✏️ 支出詳細の編集</Text>
+
+              <Text style={styles.label}>日付 (YYYY-MM-DD)</Text>
+              <TextInput 
+                placeholder="例: 2026-08-14" 
+                value={editHistoryDate} 
+                onChangeText={setEditHistoryDate} 
+                style={styles.inputFull} 
+              />
               
               <Text style={styles.label}>金額 (円)</Text>
               <TextInput 
