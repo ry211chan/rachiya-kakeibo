@@ -3,6 +3,7 @@
     "name": "らーちや家計簿",
     "slug": "rachiya-kakeibo",
     "version": "1.0.0",
+    "scheme": "rachiya",
     "owner": "rachannnnn",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
